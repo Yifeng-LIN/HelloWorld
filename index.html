@@ -114,10 +114,15 @@
     #overlay button:hover { background: #c73652; }
     #overlay.hidden { display: none; }
 
-    #sound-toggle {
+    #audio-controls {
       position: fixed;
       top: 14px;
       right: 18px;
+      display: flex;
+      gap: 8px;
+    }
+
+    #audio-controls button {
       background: #16213e;
       border: 1px solid #e9456066;
       color: #e94560;
@@ -125,12 +130,19 @@
       padding: 6px 12px;
       font-size: 13px;
       cursor: pointer;
+      transition: background 0.2s;
     }
+
+    #audio-controls button:hover { background: #1e2d52; }
+    #audio-controls button.muted { color: #555; border-color: #333; }
   </style>
 </head>
 <body>
 
-<button id="sound-toggle">🔊 Son</button>
+<div id="audio-controls">
+  <button id="music-toggle">🎵 Musique</button>
+  <button id="sfx-toggle">🔊 Sons</button>
+</div>
 
 <div id="overlay">
   <h2>TETRIS</h2>
@@ -169,6 +181,8 @@
 </div>
 
 <script>
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const COLS = 10, ROWS = 20, CELL = 30;
 
 const COLORS = [
@@ -195,18 +209,115 @@ const SHAPES = [
 
 const SCORES_PER_LINE = [0, 100, 300, 500, 800];
 
-// ── Audio ────────────────────────────────────────────────────────────────────
+// ── Audio context ─────────────────────────────────────────────────────────────
 
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-let soundEnabled = true;
 
 function resumeAudio() {
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
-function playTone({ type = 'sine', freq = 440, freq2, duration = 0.08, vol = 0.18, delay = 0 } = {}) {
-  if (!soundEnabled) return;
-  const t = audioCtx.currentTime + delay;
+// ── Music (Korobeiniki – Tetris Theme A) ──────────────────────────────────────
+
+const BPM  = 160;
+const Q    = 60 / BPM;       // quarter note
+const E    = Q / 2;           // eighth note
+const H    = Q * 2;           // half note
+const DQ   = Q * 1.5;         // dotted quarter
+
+const FREQ = {
+  A4: 440.00, B4: 493.88,
+  C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.00,
+};
+
+// Korobeiniki main melody (two 4-bar phrases, loops)
+const MELODY = [
+  // Phrase 1
+  ['E5',Q], ['B4',E], ['C5',E], ['D5',Q], ['C5',E], ['B4',E],
+  ['A4',Q], ['A4',E], ['C5',E], ['E5',Q], ['D5',E], ['C5',E],
+  ['B4',DQ],['C5',E], ['D5',Q], ['E5',Q],
+  ['C5',Q], ['A4',Q], ['A4',H],
+  // Phrase 2
+  ['D5',DQ],['F5',E], ['A5',Q], ['G5',E], ['F5',E],
+  ['E5',DQ],['C5',E], ['E5',Q], ['D5',E], ['C5',E],
+  ['B4',Q], ['B4',E], ['C5',E], ['D5',Q], ['E5',Q],
+  ['C5',Q], ['A4',Q], ['A4',H],
+];
+
+const MELODY_DURATION = MELODY.reduce((s, [, d]) => s + d, 0);
+
+// Dedicated gain node for music so we can fade in/out independently
+const musicGain = audioCtx.createGain();
+musicGain.gain.value = 0;
+musicGain.connect(audioCtx.destination);
+
+let musicEnabled = true;
+let sfxEnabled   = true;
+let musicPlaying = false;
+let musicLoopTimeout = null;
+
+function scheduleMelody(startAt) {
+  MELODY.forEach(([note, dur]) => {
+    const freq = FREQ[note];
+    if (!freq) return;
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(musicGain);
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    // Simple ADSR-ish envelope per note
+    gain.gain.setValueAtTime(0, startAt);
+    gain.gain.linearRampToValueAtTime(0.12, startAt + 0.01);
+    gain.gain.setValueAtTime(0.12, startAt + dur * 0.80);
+    gain.gain.linearRampToValueAtTime(0, startAt + dur);
+    osc.start(startAt);
+    osc.stop(startAt + dur + 0.01);
+    startAt += dur;
+  });
+  return startAt; // returns end time
+}
+
+function loopMusic() {
+  if (!musicPlaying) return;
+  const endAt = scheduleMelody(audioCtx.currentTime + 0.05);
+  // Re-schedule slightly before the melody ends to avoid gaps
+  musicLoopTimeout = setTimeout(loopMusic, (endAt - audioCtx.currentTime - 0.3) * 1000);
+}
+
+function startMusic() {
+  if (musicPlaying || !musicEnabled) return;
+  musicPlaying = true;
+  resumeAudio();
+  musicGain.gain.cancelScheduledValues(audioCtx.currentTime);
+  musicGain.gain.setValueAtTime(0, audioCtx.currentTime);
+  musicGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.5);
+  loopMusic();
+}
+
+function pauseMusic() {
+  musicGain.gain.setValueAtTime(musicGain.gain.value, audioCtx.currentTime);
+  musicGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.2);
+}
+
+function resumeMusic() {
+  musicGain.gain.cancelScheduledValues(audioCtx.currentTime);
+  musicGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.2);
+}
+
+function stopMusic() {
+  musicPlaying = false;
+  clearTimeout(musicLoopTimeout);
+  musicGain.gain.cancelScheduledValues(audioCtx.currentTime);
+  musicGain.gain.setValueAtTime(musicGain.gain.value, audioCtx.currentTime);
+  musicGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+}
+
+// ── Sound effects ─────────────────────────────────────────────────────────────
+
+function playTone({ type='sine', freq=440, freq2, duration=0.08, vol=0.18, delay=0 } = {}) {
+  if (!sfxEnabled) return;
+  const t   = audioCtx.currentTime + delay;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.connect(gain);
@@ -221,58 +332,73 @@ function playTone({ type = 'sine', freq = 440, freq2, duration = 0.08, vol = 0.1
 }
 
 const SFX = {
-  move()   { playTone({ type: 'square', freq: 220, duration: 0.04, vol: 0.08 }); },
-  rotate() { playTone({ type: 'triangle', freq: 330, freq2: 480, duration: 0.07, vol: 0.14 }); },
-  lock()   { playTone({ type: 'sawtooth', freq: 160, freq2: 80, duration: 0.12, vol: 0.18 }); },
+  move()   { playTone({ type:'square',   freq:220, duration:0.04, vol:0.08 }); },
+  rotate() { playTone({ type:'triangle', freq:330, freq2:480, duration:0.07, vol:0.14 }); },
+  lock()   { playTone({ type:'sawtooth', freq:160, freq2:80,  duration:0.12, vol:0.18 }); },
   clear(n) {
-    const notes = [523, 659, 784, 1047];
-    for (let i = 0; i < n; i++) {
-      playTone({ type: 'sine', freq: notes[i] || 1047, duration: 0.15, vol: 0.22, delay: i * 0.07 });
-    }
+    [523, 659, 784, 1047].slice(0, n).forEach((f, i) =>
+      playTone({ type:'sine', freq:f, duration:0.15, vol:0.22, delay: i * 0.07 })
+    );
   },
   levelUp() {
     [523, 659, 784, 1047, 1319].forEach((f, i) =>
-      playTone({ type: 'sine', freq: f, duration: 0.18, vol: 0.2, delay: i * 0.08 })
+      playTone({ type:'sine', freq:f, duration:0.18, vol:0.2, delay: i * 0.08 })
     );
   },
   gameOver() {
     [440, 370, 311, 261].forEach((f, i) =>
-      playTone({ type: 'sawtooth', freq: f, duration: 0.25, vol: 0.2, delay: i * 0.15 })
+      playTone({ type:'sawtooth', freq:f, duration:0.25, vol:0.2, delay: i * 0.15 })
     );
   },
 };
 
-document.getElementById('sound-toggle').addEventListener('click', () => {
-  soundEnabled = !soundEnabled;
-  document.getElementById('sound-toggle').textContent = soundEnabled ? '🔊 Son' : '🔇 Son';
+// ── Audio toggle buttons ──────────────────────────────────────────────────────
+
+const musicBtn = document.getElementById('music-toggle');
+const sfxBtn   = document.getElementById('sfx-toggle');
+
+musicBtn.addEventListener('click', () => {
+  musicEnabled = !musicEnabled;
+  musicBtn.textContent = musicEnabled ? '🎵 Musique' : '🔇 Musique';
+  musicBtn.classList.toggle('muted', !musicEnabled);
+  if (!musicEnabled) stopMusic();
+  else if (running && !paused) startMusic();
+});
+
+sfxBtn.addEventListener('click', () => {
+  sfxEnabled = !sfxEnabled;
+  sfxBtn.textContent = sfxEnabled ? '🔊 Sons' : '🔇 Sons';
+  sfxBtn.classList.toggle('muted', !sfxEnabled);
 });
 
 // ── Game state ────────────────────────────────────────────────────────────────
 
 const board = document.getElementById('board');
-const ctx = board.getContext('2d');
+const ctx   = board.getContext('2d');
 const nextCanvas = document.getElementById('next-canvas');
-const nCtx = nextCanvas.getContext('2d');
+const nCtx  = nextCanvas.getContext('2d');
 
-let grid, piece, nextPiece, score, level, lines, dropInterval, lastTime, paused, running, dropAccum;
+let grid, piece, nextPiece, score, level, lines;
+let dropInterval, dropAccum, lastTime;
+let paused, running;
 
 function newGrid() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
 }
 
 function randomPiece() {
-  const type = Math.floor(Math.random() * 7) + 1;
+  const type  = Math.floor(Math.random() * 7) + 1;
   const shape = SHAPES[type].map(r => [...r]);
   return { type, shape, x: Math.floor((COLS - shape[0].length) / 2), y: 0 };
 }
 
 function rotate(shape) {
   const rows = shape.length, cols = shape[0].length;
-  const result = Array.from({ length: cols }, () => Array(rows).fill(0));
+  const out = Array.from({ length: cols }, () => Array(rows).fill(0));
   for (let r = 0; r < rows; r++)
     for (let c = 0; c < cols; c++)
-      result[c][rows - 1 - r] = shape[r][c];
-  return result;
+      out[c][rows - 1 - r] = shape[r][c];
+  return out;
 }
 
 function isValid(shape, ox, oy) {
@@ -288,8 +414,7 @@ function isValid(shape, ox, oy) {
 
 function tryRotate() {
   const rotated = rotate(piece.shape);
-  const kicks = [0, -1, 1, -2, 2];
-  for (const k of kicks) {
+  for (const k of [0, -1, 1, -2, 2]) {
     if (isValid(rotated, piece.x + k, piece.y)) {
       piece.shape = rotated;
       piece.x += k;
@@ -307,7 +432,7 @@ function lock() {
   const prevLevel = level;
   clearLines();
   if (level > prevLevel) SFX.levelUp();
-  piece = nextPiece;
+  piece     = nextPiece;
   nextPiece = randomPiece();
   drawNext();
   if (!isValid(piece.shape, piece.x, piece.y)) gameOver();
@@ -326,7 +451,7 @@ function clearLines() {
     SFX.clear(cleared);
     lines += cleared;
     score += SCORES_PER_LINE[cleared] * level;
-    level = Math.floor(lines / 10) + 1;
+    level  = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     document.getElementById('score').textContent = score;
     document.getElementById('level').textContent = level;
@@ -338,8 +463,7 @@ function clearLines() {
 
 function drawCell(context, x, y, type, size = CELL) {
   if (!type) return;
-  const color = COLORS[type];
-  context.fillStyle = color;
+  context.fillStyle = COLORS[type];
   context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
   context.fillStyle = 'rgba(255,255,255,0.25)';
   context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
@@ -358,7 +482,6 @@ function drawGhost() {
 
 function draw() {
   ctx.clearRect(0, 0, board.width, board.height);
-
   ctx.strokeStyle = '#ffffff08';
   ctx.lineWidth = 1;
   for (let r = 0; r <= ROWS; r++) {
@@ -367,7 +490,6 @@ function draw() {
   for (let c = 0; c <= COLS; c++) {
     ctx.beginPath(); ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, ROWS * CELL); ctx.stroke();
   }
-
   grid.forEach((row, r) => row.forEach((v, c) => drawCell(ctx, c, r, v)));
   drawGhost();
   piece.shape.forEach((row, r) =>
@@ -377,16 +499,16 @@ function draw() {
 
 function drawNext() {
   nCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
-  const s = nextPiece.shape;
+  const s    = nextPiece.shape;
   const size = 20;
-  const ox = Math.floor((5 - s[0].length) / 2);
-  const oy = Math.floor((5 - s.length) / 2);
+  const ox   = Math.floor((5 - s[0].length) / 2);
+  const oy   = Math.floor((5 - s.length) / 2);
   s.forEach((row, r) =>
     row.forEach((v, c) => { if (v) drawCell(nCtx, ox + c, oy + r, nextPiece.type, size); })
   );
 }
 
-// ── Loop ──────────────────────────────────────────────────────────────────────
+// ── Main loop ─────────────────────────────────────────────────────────────────
 
 function loop(ts) {
   if (!running) return;
@@ -404,48 +526,56 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
-// ── Start / End ───────────────────────────────────────────────────────────────
+// ── Game lifecycle ────────────────────────────────────────────────────────────
 
 function startGame() {
   resumeAudio();
-  grid = newGrid();
+  grid  = newGrid();
   score = 0; level = 1; lines = 0; dropInterval = 1000;
   dropAccum = 0; lastTime = 0; paused = false; running = true;
-  ['score','level','lines'].forEach(id => document.getElementById(id).textContent =
-    id === 'level' ? '1' : '0'
-  );
-  piece = randomPiece();
+  document.getElementById('score').textContent = '0';
+  document.getElementById('level').textContent = '1';
+  document.getElementById('lines').textContent = '0';
+  piece     = randomPiece();
   nextPiece = randomPiece();
   drawNext();
   document.getElementById('overlay').classList.add('hidden');
+  startMusic();
   requestAnimationFrame(loop);
 }
 
 function gameOver() {
   running = false;
+  stopMusic();
   SFX.gameOver();
   const overlay = document.getElementById('overlay');
   overlay.querySelector('h2').textContent = 'GAME OVER';
-  overlay.querySelector('p').textContent = `Score : ${score}`;
+  overlay.querySelector('p').textContent  = `Score : ${score}`;
   overlay.querySelector('button').textContent = 'Rejouer';
   overlay.classList.remove('hidden');
 }
 
 document.getElementById('start-btn').addEventListener('click', startGame);
 
-// ── Input ─────────────────────────────────────────────────────────────────────
+// ── Keyboard input ────────────────────────────────────────────────────────────
 
 document.addEventListener('keydown', e => {
-  // Prevent arrow / space from scrolling the page
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
 
   if (!running) return;
 
   if (e.key === ' ') {
     paused = !paused;
-    if (!paused) { lastTime = 0; requestAnimationFrame(loop); }
+    if (paused) {
+      pauseMusic();
+    } else {
+      lastTime = 0;
+      resumeMusic();
+      requestAnimationFrame(loop);
+    }
     return;
   }
+
   if (paused) return;
 
   switch (e.key) {
