@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic>=2.0
+anthropic>=0.40.0
+instructor>=1.0.0
+ifcopenshell
+python-multipart
+httpx
