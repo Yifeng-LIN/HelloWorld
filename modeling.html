@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>对话式建筑几何建模 · Conversational Architectural Modeler</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #14141f;
+    --panel: #1c1c2b;
+    --panel2: #232336;
+    --accent: #e94560;
+    --accent2: #4fc3f7;
+    --ok: #4caf7d;
+    --text: #e8e8f0;
+    --muted: #8b8ba7;
+    --line: #2e2e44;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 16px; font-weight: 600; letter-spacing: .3px; }
+  header .tag { font-size: 11px; color: var(--muted); }
+  header .spacer { flex: 1; }
+  button {
+    font-family: inherit; cursor: pointer; border: none; border-radius: 6px;
+    color: var(--text); background: var(--panel2); padding: 7px 12px; font-size: 13px;
+    transition: background .15s, opacity .15s;
+  }
+  button:hover { background: #2f2f48; }
+  button.primary { background: var(--accent); }
+  button.primary:hover { background: #ff5b75; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  #main { flex: 1; display: grid; grid-template-columns: 360px 1fr 300px; min-height: 0; }
+
+  /* ---------- Chat ---------- */
+  #chat { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); min-height: 0; }
+  #log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 92%; padding: 9px 12px; border-radius: 12px; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: var(--accent); border-bottom-right-radius: 3px; }
+  .msg.bot  { align-self: flex-start; background: var(--panel2); border-bottom-left-radius: 3px; }
+  .msg.sys  { align-self: center; background: transparent; color: var(--muted); font-size: 12px; text-align: center; max-width: 100%; }
+  .msg img { max-width: 100%; border-radius: 8px; margin-top: 6px; display: block; }
+  .msg .thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .msg .thumbs img { width: 70px; height: 70px; object-fit: cover; margin: 0; }
+  .typing { display: inline-flex; gap: 4px; }
+  .typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite both; }
+  .typing span:nth-child(2){ animation-delay:.2s } .typing span:nth-child(3){ animation-delay:.4s }
+  @keyframes blink { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+
+  #composer { border-top: 1px solid var(--line); padding: 10px; background: var(--panel); }
+  #dropzone.dragover { outline: 2px dashed var(--accent2); outline-offset: -6px; border-radius: 10px; }
+  #pending { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  #pending .chip { position: relative; }
+  #pending img { width: 54px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+  #pending .x { position: absolute; top: -6px; right: -6px; background: var(--accent); border-radius: 50%; width: 18px; height: 18px; font-size: 12px; line-height: 18px; text-align: center; }
+  #inputRow { display: flex; gap: 8px; align-items: flex-end; }
+  #text { flex: 1; resize: none; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-family: inherit; font-size: 13.5px; max-height: 140px; min-height: 42px; }
+  #text:focus { outline: none; border-color: var(--accent2); }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  /* ---------- Viewport ---------- */
+  #viewport { position: relative; background: radial-gradient(ellipse at 50% 30%, #1d2a3a 0%, #0d0d16 70%); min-height: 0; }
+  #scene { width: 100%; height: 100%; display: block; }
+  #vpOverlay { position: absolute; top: 12px; left: 12px; font-size: 12px; color: var(--muted); background: rgba(0,0,0,.4); padding: 6px 10px; border-radius: 6px; pointer-events: none; }
+  #vpBadge { position: absolute; top: 12px; right: 12px; font-size: 12px; padding: 6px 12px; border-radius: 20px; background: var(--panel2); border: 1px solid var(--line); }
+  #vpBadge.complete { background: var(--ok); border-color: var(--ok); color: #fff; }
+
+  /* ---------- State table ---------- */
+  #state { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  #state h2 { font-size: 13px; padding: 12px 14px 8px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
+  #progressWrap { padding: 0 14px 10px; }
+  #progressBar { height: 6px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+  #progressFill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent2), var(--ok)); transition: width .4s; }
+  #progressTxt { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  #fields { flex: 1; overflow-y: auto; padding: 4px 10px 14px; }
+  .field { display: flex; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 6px; font-size: 12.5px; border-bottom: 1px solid var(--line); }
+  .field .k { color: var(--muted); }
+  .field .v { font-weight: 600; text-align: right; }
+  .field.missing .v { color: var(--accent); font-weight: 400; font-style: italic; }
+  .field.group { color: var(--accent2); font-weight: 600; border: none; padding-top: 12px; padding-bottom: 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  #state .footer { padding: 10px 14px; border-top: 1px solid var(--line); display: flex; gap: 8px; }
+  #state .footer button { flex: 1; font-size: 12px; }
+
+  /* ---------- Settings modal ---------- */
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 50; }
+  #overlay.show { display: flex; }
+  #settings { width: 460px; max-width: 92vw; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  #settings h3 { margin-bottom: 14px; }
+  #settings label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; }
+  #settings input, #settings select { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 9px 10px; font-family: inherit; font-size: 13px; }
+  #settings .row { display: flex; gap: 8px; margin-top: 18px; }
+  #settings .note { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+  a { color: var(--accent2); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏗️ 对话式建筑几何建模</h1>
+  <span class="tag">Conversational Architectural Modeler · Claude-powered</span>
+  <span class="spacer"></span>
+  <button id="btnExport">导出 JSON</button>
+  <button id="btnSettings">⚙ 设置</button>
+</header>
+
+<div id="main">
+  <!-- Chat -->
+  <section id="chat">
+    <div id="log"></div>
+    <div id="composer">
+      <div id="dropzone">
+        <div id="pending"></div>
+        <div id="inputRow">
+          <textarea id="text" rows="1" placeholder="描述你的建筑，例如：一栋 18 层的玻璃幕墙塔楼，平面 30×24 米，平屋顶…&#10;也可拖入或粘贴参考图片。"></textarea>
+          <button id="send" class="primary">发送</button>
+        </div>
+      </div>
+      <div class="hint">⌨ Enter 发送 · Shift+Enter 换行 · 支持拖拽/粘贴(Ctrl+V)图片</div>
+    </div>
+  </section>
+
+  <!-- 3D viewport -->
+  <section id="viewport">
+    <canvas id="scene"></canvas>
+    <div id="vpOverlay">左键旋转 · 滚轮缩放 · 右键平移</div>
+    <div id="vpBadge">等待输入…</div>
+  </section>
+
+  <!-- State table -->
+  <aside id="state">
+    <h2>模型输入状态表</h2>
+    <div id="progressWrap">
+      <div id="progressBar"><div id="progressFill"></div></div>
+      <div id="progressTxt">完成度 0%</div>
+    </div>
+    <div id="fields"></div>
+    <div class="footer">
+      <button id="btnReset">清空重来</button>
+    </div>
+  </aside>
+</div>
+
+<!-- Settings -->
+<div id="overlay">
+  <div id="settings">
+    <h3>⚙ 设置</h3>
+    <label>Anthropic API Key</label>
+    <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off" />
+    <label>模型</label>
+    <select id="model">
+      <option value="claude-opus-4-8">Claude Opus 4.8（最强）</option>
+      <option value="claude-sonnet-4-6">Claude Sonnet 4.6（均衡）</option>
+      <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5（最快）</option>
+    </select>
+    <div class="note">
+      API Key 仅保存在你浏览器的 localStorage，不会上传到任何服务器（请求直接从浏览器发往
+      <code>api.anthropic.com</code>）。需要一个有效的
+      <a href="https://console.anthropic.com/" target="_blank">Anthropic API Key</a>。
+    </div>
+    <div class="row">
+      <button class="primary" id="saveSettings" style="flex:1">保存</button>
+      <button id="closeSettings" style="flex:1">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ============================================================
+ *  STATE SCHEMA — the "input state table" we fill from chat
+ * ============================================================ */
+const EMPTY_STATE = {
+  buildingType: null,        // 塔楼 / 板楼 / 裙房+塔楼 / 别墅 / 庭院式 ...
+  plan: { shape: null, width: null, depth: null, radius: null }, // 平面: rectangle|L|U|circle|polygon
+  floors: null,              // 标准层数
+  floorHeight: null,         // 层高 (m)
+  podium: null,              // {floors, width, depth} 或 null
+  roof: { type: null, height: null }, // flat|gable|hip|pyramid|dome
+  facade: { color: null, windowRatio: null, glass: null }, // 颜色#hex, 0-1, 是否玻璃幕墙
+  rotationDeg: null          // 朝向旋转 (deg)
+};
+
+const REQUIRED = [
+  ['buildingType', s => s.buildingType],
+  ['plan.shape',   s => s.plan?.shape],
+  ['plan.size',    s => (s.plan?.shape === 'circle' ? s.plan?.radius : (s.plan?.width && s.plan?.depth))],
+  ['floors',       s => s.floors],
+  ['floorHeight',  s => s.floorHeight],
+  ['roof.type',    s => s.roof?.type],
+  ['facade.color', s => s.facade?.color],
+];
+
+let state = structuredClone(EMPTY_STATE);
+let history = [];   // Anthropic messages array (plain text assistant turns)
+let pendingImages = []; // {media_type, data(base64), url}
+
+/* ============================================================
+ *  SETTINGS / persistence
+ * ============================================================ */
+const LS = { key: 'arch_api_key', model: 'arch_model' };
+const getKey   = () => localStorage.getItem(LS.key) || '';
+const getModel = () => localStorage.getItem(LS.model) || 'claude-opus-4-8';
+
+const $ = id => document.getElementById(id);
+
+function openSettings(){
+  $('apiKey').value = getKey();
+  $('model').value = getModel();
+  $('overlay').classList.add('show');
+}
+function closeSettings(){ $('overlay').classList.remove('show'); }
+$('btnSettings').onclick = openSettings;
+$('closeSettings').onclick = closeSettings;
+$('saveSettings').onclick = () => {
+  localStorage.setItem(LS.key, $('apiKey').value.trim());
+  localStorage.setItem(LS.model, $('model').value);
+  closeSettings();
+  sysMsg('设置已保存。现在可以开始对话建模了。');
+};
+
+/* ============================================================
+ *  CHAT UI
+ * ============================================================ */
+const log = $('log');
+function scrollLog(){ log.scrollTop = log.scrollHeight; }
+
+function addMsg(role, text, images){
+  const el = document.createElement('div');
+  el.className = 'msg ' + role;
+  if (text) el.textContent = text;
+  if (images && images.length){
+    const wrap = document.createElement('div');
+    wrap.className = 'thumbs';
+    images.forEach(im => { const img = new Image(); img.src = im.url; wrap.appendChild(img); });
+    el.appendChild(wrap);
+  }
+  log.appendChild(el); scrollLog();
+  return el;
+}
+function sysMsg(t){ addMsg('sys', t); }
+
+function showTyping(){
+  const el = document.createElement('div');
+  el.className = 'msg bot';
+  el.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+  log.appendChild(el); scrollLog();
+  return el;
+}
+
+/* ---- pending image chips ---- */
+function renderPending(){
+  const box = $('pending'); box.innerHTML = '';
+  pendingImages.forEach((im, i) => {
+    const chip = document.createElement('div'); chip.className = 'chip';
+    const img = new Image(); img.src = im.url;
+    const x = document.createElement('div'); x.className = 'x'; x.textContent = '×';
+    x.onclick = () => { pendingImages.splice(i,1); renderPending(); };
+    chip.appendChild(img); chip.appendChild(x); box.appendChild(chip);
+  });
+}
+function addImageFile(file){
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = e.target.result;
+    const base64 = dataUrl.split(',')[1];
+    pendingImages.push({ media_type: file.type, data: base64, url: dataUrl });
+    renderPending();
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ---- drag & drop + paste ---- */
+const dz = $('dropzone');
+['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('dragover'); }));
+['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('dragover'); }));
+dz.addEventListener('drop', e => { [...e.dataTransfer.files].forEach(addImageFile); });
+document.addEventListener('paste', e => {
+  const items = e.clipboardData?.items || [];
+  for (const it of items){ if (it.type.startsWith('image/')) addImageFile(it.getAsFile()); }
+});
+
+/* ---- textarea autosize + enter to send ---- */
+const ta = $('text');
+ta.addEventListener('input', () => { ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight,140)+'px'; });
+ta.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+});
+$('send').onclick = send;
+$('btnReset').onclick = resetAll;
+$('btnExport').onclick = exportJSON;
+
+function resetAll(){
+  state = structuredClone(EMPTY_STATE);
+  history = []; pendingImages = []; renderPending();
+  log.innerHTML = '';
+  rebuild(); renderState();
+  greet();
+}
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'building_state.json'; a.click();
+}
+
+/* ============================================================
+ *  CLAUDE API
+ * ============================================================ */
+const SYSTEM_PROMPT = `你是一个建筑几何建模助手。用户通过自然对话（可能附带参考图片）描述他想要的建筑，你的任务是把这些信息抽取并填充进一个结构化的"输入状态表"，以便前端实时生成参数化的 3D 几何体。
+
+你必须**每一轮都调用 update_building_model 工具**，并在其中返回：
+1. assistant_message：用中文给用户的简短回复。要么确认你理解到的信息，要么主动追问仍然缺失的关键字段（一次问 1-2 个即可，自然友好）。
+2. state：**完整合并后**的当前状态（把已知信息与本轮新信息合并，未知字段保持 null）。
+3. missing_fields：仍然缺失的关键字段名数组。
+4. complete：当 buildingType、平面形状与尺寸、层数、层高、屋顶类型、立面颜色都齐全时为 true，否则 false。
+
+字段规则：
+- buildingType：如 "塔楼"、"板楼"、"裙房+塔楼"、"别墅"、"庭院式" 等。
+- plan.shape：rectangle | L | U | circle | polygon 之一。
+- plan.width / plan.depth：矩形/L/U 的平面尺寸(米)。plan.radius：圆形半径(米)。
+- floors：标准层数(整数)。floorHeight：层高(米，默认可建议 3-4 米)。
+- podium：若有裙房则 {floors, width, depth}，否则 null。
+- roof.type：flat | gable | hip | pyramid | dome。roof.height：坡/尖屋顶的高度(米)。
+- facade.color：十六进制颜色如 "#8fa9c0"。facade.windowRatio：开窗率 0-1。facade.glass：是否玻璃幕墙(布尔)。
+- rotationDeg：朝向旋转角度(度)。
+- 如果用户给了参考图片，请从图片推断风格、体量、屋顶、立面颜色与开窗等，并合理填充。
+- 用户没明确说的非关键字段可以保持 null，或给出合理默认并在回复中说明。`;
+
+const TOOL = {
+  name: 'update_building_model',
+  description: '更新建筑几何模型的结构化输入状态表，并给出对用户的回复。',
+  input_schema: {
+    type: 'object',
+    properties: {
+      assistant_message: { type: 'string', description: '用中文回复用户，确认信息或追问缺失项。' },
+      state: {
+        type: 'object',
+        properties: {
+          buildingType: { type: ['string','null'] },
+          plan: {
+            type: 'object',
+            properties: {
+              shape: { type: ['string','null'], enum: ['rectangle','L','U','circle','polygon', null] },
+              width: { type: ['number','null'] },
+              depth: { type: ['number','null'] },
+              radius: { type: ['number','null'] }
+            }
+          },
+          floors: { type: ['integer','null'] },
+          floorHeight: { type: ['number','null'] },
+          podium: {
+            type: ['object','null'],
+            properties: { floors:{type:['integer','null']}, width:{type:['number','null']}, depth:{type:['number','null']} }
+          },
+          roof: {
+            type: 'object',
+            properties: { type:{ type:['string','null'], enum:['flat','gable','hip','pyramid','dome',null] }, height:{type:['number','null']} }
+          },
+          facade: {
+            type: 'object',
+            properties: { color:{type:['string','null']}, windowRatio:{type:['number','null']}, glass:{type:['boolean','null']} }
+          },
+          rotationDeg: { type: ['number','null'] }
+        }
+      },
+      missing_fields: { type: 'array', items: { type: 'string' } },
+      complete: { type: 'boolean' }
+    },
+    required: ['assistant_message','state','missing_fields','complete']
+  }
+};
+
+async function callClaude(userContent){
+  const key = getKey();
+  if (!key){ openSettings(); throw new Error('请先在「设置」中填写 Anthropic API Key。'); }
+
+  history.push({ role: 'user', content: userContent });
+
+  const body = {
+    model: getModel(),
+    max_tokens: 1500,
+    system: SYSTEM_PROMPT + '\n\n当前状态(JSON)：\n' + JSON.stringify(state),
+    tools: [TOOL],
+    tool_choice: { type: 'tool', name: 'update_building_model' },
+    messages: history
+  };
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok){
+    const errTxt = await res.text();
+    throw new Error('API 错误 ' + res.status + '：' + errTxt.slice(0, 300));
+  }
+  const data = await res.json();
+  const toolUse = (data.content || []).find(c => c.type === 'tool_use');
+  if (!toolUse) throw new Error('模型未返回结构化状态。');
+  return toolUse.input;
+}
+
+async function send(){
+  const txt = ta.value.trim();
+  if (!txt && pendingImages.length === 0) return;
+
+  // build user content (text + images) for both UI and API
+  const imgs = pendingImages.slice();
+  addMsg('user', txt, imgs);
+
+  const apiContent = [];
+  imgs.forEach(im => apiContent.push({ type:'image', source:{ type:'base64', media_type: im.media_type, data: im.data } }));
+  if (txt) apiContent.push({ type:'text', text: txt });
+
+  // reset composer
+  ta.value=''; ta.style.height='auto'; pendingImages=[]; renderPending();
+  ta.disabled = true; $('send').disabled = true;
+
+  const typing = showTyping();
+  try {
+    const out = await callClaude(apiContent);
+    typing.remove();
+    // merge & apply
+    if (out.state) state = deepMerge(structuredClone(EMPTY_STATE), out.state);
+    addMsg('bot', out.assistant_message || '(已更新模型)');
+    history.push({ role:'assistant', content: out.assistant_message || '已更新模型。' });
+    rebuild();
+    renderState(out.complete, out.missing_fields);
+  } catch (err){
+    typing.remove();
+    addMsg('bot', '⚠ ' + err.message);
+  } finally {
+    ta.disabled = false; $('send').disabled = false; ta.focus();
+  }
+}
+
+/* deep merge that lets returned (non-null) values overwrite */
+function deepMerge(base, patch){
+  if (patch === null || patch === undefined) return base;
+  if (typeof patch !== 'object' || Array.isArray(patch)) return patch;
+  const out = Array.isArray(base) ? [] : { ...base };
+  for (const k of Object.keys(patch)){
+    const pv = patch[k];
+    if (pv && typeof pv === 'object' && !Array.isArray(pv) && base && typeof base[k] === 'object' && base[k] !== null){
+      out[k] = deepMerge(base[k], pv);
+    } else if (pv !== null && pv !== undefined){
+      out[k] = pv;
+    }
+  }
+  return out;
+}
+
+/* ============================================================
+ *  STATE TABLE rendering
+ * ============================================================ */
+function fmt(v, unit=''){ return (v===null||v===undefined) ? null : (v + unit); }
+function renderState(complete, missing){
+  const rows = [];
+  const add = (k, v) => rows.push({k, v, missing: v===null||v===undefined});
+  const grp = t => rows.push({group:t});
+
+  grp('基本');
+  add('建筑类型', state.buildingType);
+  add('朝向旋转', fmt(state.rotationDeg, '°'));
+  grp('平面');
+  add('形状', planShapeLabel(state.plan.shape));
+  if (state.plan.shape === 'circle') add('半径', fmt(state.plan.radius,' m'));
+  else { add('宽度 (X)', fmt(state.plan.width,' m')); add('进深 (Z)', fmt(state.plan.depth,' m')); }
+  grp('体量');
+  add('层数', state.floors);
+  add('层高', fmt(state.floorHeight,' m'));
+  add('裙房', state.podium ? `${state.podium.floors??'?'}层 ${state.podium.width??'?'}×${state.podium.depth??'?'}m` : null);
+  grp('屋顶');
+  add('类型', roofLabel(state.roof.type));
+  add('高度', fmt(state.roof.height,' m'));
+  grp('立面');
+  add('颜色', state.facade.color);
+  add('开窗率', state.facade.windowRatio!=null ? Math.round(state.facade.windowRatio*100)+'%' : null);
+  add('玻璃幕墙', state.facade.glass==null ? null : (state.facade.glass ? '是' : '否'));
+
+  const box = $('fields'); box.innerHTML = '';
+  rows.forEach(r => {
+    if (r.group){ const g=document.createElement('div'); g.className='field group'; g.textContent=r.group; box.appendChild(g); return; }
+    const el = document.createElement('div'); el.className = 'field' + (r.missing ? ' missing' : '');
+    el.innerHTML = `<span class="k">${r.k}</span><span class="v">${r.missing ? '待补充' : escapeHtml(String(r.v))}</span>`;
+    if (r.k === '颜色' && !r.missing){ el.querySelector('.v').innerHTML = `<span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:${escapeHtml(r.v)};vertical-align:middle;margin-right:5px;border:1px solid #fff3"></span>${escapeHtml(r.v)}`; }
+    box.appendChild(el);
+  });
+
+  // progress
+  const done = REQUIRED.filter(([,f]) => f(state)).length;
+  const pct = Math.round(done / REQUIRED.length * 100);
+  $('progressFill').style.width = pct + '%';
+  $('progressTxt').textContent = `完成度 ${pct}% （关键字段 ${done}/${REQUIRED.length}）`;
+
+  const allDone = done === REQUIRED.length;
+  const badge = $('vpBadge');
+  if (allDone){ badge.textContent = '✓ 模型信息完整'; badge.classList.add('complete'); }
+  else { badge.textContent = (missing && missing.length) ? `缺少: ${missing.slice(0,3).join(', ')}` : '建模中…'; badge.classList.remove('complete'); }
+}
+function planShapeLabel(s){ return ({rectangle:'矩形',L:'L 形',U:'U 形',circle:'圆形',polygon:'多边形'})[s] || s; }
+function roofLabel(s){ return ({flat:'平屋顶',gable:'双坡',hip:'四坡',pyramid:'尖顶',dome:'穹顶'})[s] || s; }
+function escapeHtml(s){ return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ============================================================
+ *  THREE.JS — parametric building generator
+ * ============================================================ */
+const canvas = $('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = null;
+scene.fog = new THREE.Fog(0x0d0d16, 120, 400);
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 2000);
+camera.position.set(70, 55, 90);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.target.set(0, 15, 0);
+
+// lights
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x202028, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.position.set(60, 90, 40);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left=-120; sun.shadow.camera.right=120; sun.shadow.camera.top=120; sun.shadow.camera.bottom=-120;
+sun.shadow.camera.far = 400;
+scene.add(sun);
+
+// ground + grid
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(300, 64),
+  new THREE.MeshStandardMaterial({ color: 0x1a1f2a, roughness: 1 })
+);
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
+scene.add(ground);
+const grid = new THREE.GridHelper(400, 80, 0x33405a, 0x222b3a);
+grid.position.y = 0.02;
+scene.add(grid);
+
+let buildingGroup = new THREE.Group();
+scene.add(buildingGroup);
+
+function clearGroup(g){
+  g.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material){ const m=o.material; (Array.isArray(m)?m:[m]).forEach(x=>{ if(x.map)x.map.dispose(); x.dispose(); }); }
+  });
+  g.clear();
+}
+
+/* facade texture: ONE tileable window cell, based on windowRatio & glass.
+   Repeat is set per-geometry in rebuild() because Extrude vs Cylinder UVs differ. */
+function makeFacadeTexture(color, windowRatio, glass){
+  const cell = 64;
+  const cv = document.createElement('canvas');
+  cv.width = cell; cv.height = cell;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = color || '#9aa7b5';
+  ctx.fillRect(0,0,cell,cell);
+  const wr = windowRatio==null ? 0.45 : Math.max(0.05, Math.min(0.92, windowRatio));
+  const glassCol = glass ? '#7fb6d6' : '#2b3a4a';
+  const w = cell*wr, h = cell*Math.min(0.92, wr*1.25);
+  const x = (cell-w)/2, y = (cell-h)/2;
+  ctx.fillStyle = glassCol;
+  ctx.fillRect(x,y,w,h);
+  ctx.fillStyle = 'rgba(255,255,255,0.14)'; // light reflection band
+  ctx.fillRect(x,y,w,h*0.28);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/* footprint THREE.Shape for non-circular plans */
+function footprintShape(plan){
+  const w = plan.width || 24, d = plan.depth || 18;
+  const shape = new THREE.Shape();
+  if (plan.shape === 'L'){
+    const a=w, b=d, t=Math.min(w,d)*0.5;
+    shape.moveTo(-a/2,-b/2); shape.lineTo(a/2,-b/2); shape.lineTo(a/2,-b/2+t);
+    shape.lineTo(-a/2+t,-b/2+t); shape.lineTo(-a/2+t,b/2); shape.lineTo(-a/2,b/2); shape.closePath();
+  } else if (plan.shape === 'U'){
+    const a=w,b=d,t=Math.min(w,d)*0.32;
+    shape.moveTo(-a/2,-b/2); shape.lineTo(a/2,-b/2); shape.lineTo(a/2,b/2); shape.lineTo(a/2-t,b/2);
+    shape.lineTo(a/2-t,-b/2+t); shape.lineTo(-a/2+t,-b/2+t); shape.lineTo(-a/2+t,b/2); shape.lineTo(-a/2,b/2); shape.closePath();
+  } else { // rectangle / polygon fallback
+    shape.moveTo(-w/2,-d/2); shape.lineTo(w/2,-d/2); shape.lineTo(w/2,d/2); shape.lineTo(-w/2,d/2); shape.closePath();
+  }
+  return shape;
+}
+
+function buildBody(plan, height, mat){
+  let geo;
+  if (plan.shape === 'circle'){
+    const r = plan.radius || 12;
+    geo = new THREE.CylinderGeometry(r, r, height, 48);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.y = height/2;
+    return mesh;
+  }
+  const shape = footprintShape(plan);
+  geo = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false, curveSegments: 4 });
+  geo.rotateX(-Math.PI/2); // extrude up
+  const mesh = new THREE.Mesh(geo, mat);
+  return mesh;
+}
+
+function buildRoof(plan, baseY, roof, color){
+  const type = roof?.type || 'flat';
+  const w = plan.width || 24, d = plan.depth || 18, r = plan.radius || 12;
+  const mat = new THREE.MeshStandardMaterial({ color: 0x6b5a4a, roughness: 0.85 });
+  const flatMat = new THREE.MeshStandardMaterial({ color: shade(color, -0.25), roughness: 0.9 });
+  let mesh;
+  if (type === 'flat'){
+    if (plan.shape === 'circle'){ mesh = new THREE.Mesh(new THREE.CylinderGeometry(r*1.02, r*1.02, 0.6, 48), flatMat); }
+    else { const s=footprintShape({...plan, width:w*1.02, depth:d*1.02}); const g=new THREE.ExtrudeGeometry(s,{depth:0.8,bevelEnabled:false}); g.rotateX(-Math.PI/2); mesh=new THREE.Mesh(g,flatMat); }
+    mesh.position.y = baseY + 0.4;
+  } else if (type === 'pyramid' || type === 'hip'){
+    const h = roof.height || Math.min(w,d)*0.5;
+    const radial = (type==='hip') ? 4 : 4;
+    mesh = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w,d)*0.72, h, radial), mat);
+    mesh.rotation.y = Math.PI/4;
+    mesh.position.y = baseY + h/2;
+  } else if (type === 'dome'){
+    const rr = (plan.shape==='circle'? r : Math.max(w,d)/2);
+    const g = new THREE.SphereGeometry(rr, 32, 16, 0, Math.PI*2, 0, Math.PI/2);
+    mesh = new THREE.Mesh(g, mat); mesh.position.y = baseY;
+  } else { // gable — triangular prism along depth (Z)
+    const h = roof.height || Math.min(w,d)*0.4;
+    const shape = new THREE.Shape();
+    shape.moveTo(-w/2,0); shape.lineTo(w/2,0); shape.lineTo(0,h); shape.closePath();
+    const g = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled:false });
+    g.translate(0,0,-d/2);
+    mesh = new THREE.Mesh(g, mat);
+    mesh.position.y = baseY;
+  }
+  mesh.castShadow = true;
+  return mesh;
+}
+
+function shade(hex, amt){
+  if (!hex) hex = '#9aa7b5';
+  const c = new THREE.Color(hex);
+  c.offsetHSL(0,0,amt);
+  return c.getHex();
+}
+
+function rebuild(){
+  clearGroup(buildingGroup);
+  scene.remove(buildingGroup);
+  buildingGroup = new THREE.Group();
+
+  const hasGeom = state.plan.shape && (state.floors || state.floorHeight);
+  if (!hasGeom){ scene.add(buildingGroup); return; }
+
+  const floors = state.floors || 8;
+  const fh = state.floorHeight || 3.3;
+  const height = floors * fh;
+  const w = state.plan.width || 24, d = state.plan.depth || 18, r = state.plan.radius || 12;
+
+  const tex = makeFacadeTexture(state.facade.color || '#9aa7b5', state.facade.windowRatio, state.facade.glass);
+  if (state.plan.shape === 'circle'){
+    // Cylinder UVs are 0..1: one window cell per column / per floor.
+    const cols = Math.max(4, Math.round(2*Math.PI*r / 3.2));
+    tex.repeat.set(cols, floors);
+  } else {
+    // ExtrudeGeometry uses world-space (metres) UVs: one cell ≈ 3.2m wide × floorHeight tall.
+    tex.repeat.set(1/3.2, 1/fh);
+  }
+  const bodyMat = new THREE.MeshStandardMaterial({
+    map: tex,
+    color: 0xffffff,
+    roughness: state.facade.glass ? 0.25 : 0.8,
+    metalness: state.facade.glass ? 0.5 : 0.05
+  });
+
+  const body = buildBody(state.plan, height, bodyMat);
+  body.castShadow = true; body.receiveShadow = true;
+  buildingGroup.add(body);
+
+  // podium
+  if (state.podium){
+    const pf = state.podium.floors || 2;
+    const ph = pf * fh;
+    const pw = state.podium.width || w*1.6, pd = state.podium.depth || d*1.6;
+    const pMat = new THREE.MeshStandardMaterial({ color: shade(state.facade.color, -0.1), roughness:0.85 });
+    const podium = buildBody({ shape:'rectangle', width:pw, depth:pd }, ph, pMat);
+    podium.castShadow = true; podium.receiveShadow = true;
+    buildingGroup.add(podium);
+  }
+
+  buildingGroup.add(buildRoof(state.plan, height, state.roof, state.facade.color));
+
+  buildingGroup.rotation.y = THREE.MathUtils.degToRad(state.rotationDeg || 0);
+  scene.add(buildingGroup);
+
+  // frame camera target to mid height
+  controls.target.set(0, height*0.45, 0);
+}
+
+/* render loop + resize */
+function resize(){
+  const vp = $('viewport');
+  const w = vp.clientWidth, h = vp.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe($('viewport'));
+resize();
+
+function animate(){
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+animate();
+
+/* ============================================================
+ *  BOOT
+ * ============================================================ */
+function greet(){
+  sysMsg('对话即建模 — 用自然语言描述你的建筑，状态表会被实时填充，3D 模型同步生成。');
+  addMsg('bot', '你好！我可以根据你的描述生成建筑几何模型 🏙️\n试试告诉我：建筑类型、平面形状与尺寸、层数层高、屋顶样式、立面颜色等。\n例如："一栋 20 层的玻璃幕墙塔楼，平面 32×24 米，平屋顶，深蓝色立面"。\n你也可以直接拖入或粘贴一张参考图片，我会从图里推断造型。');
+  if (!getKey()) sysMsg('提示：首次使用请点右上角 ⚙ 设置 填入 Anthropic API Key。');
+}
+renderState();
+rebuild();
+greet();
+</script>
+</body>
+</html>
