@@ -1,0 +1,31 @@
+{
+  "currency": "EUR",
+  "fx_note": "1 EUR = 1.1652 USD (2026-08-28)",
+  "market_fare_anchors": {
+    "round_trip_min": 610,
+    "round_trip_average": 970,
+    "china_southern_typical": 910,
+    "one_way_from": 526,
+    "cheapest_month": "1月 (520-760)",
+    "source": "Expedia.fr / Google Flights / Trip.com 报价，2026-08 核实"
+  },
+  "market_fare_monthly_round_trip": {
+    "1": 700, "2": 1150, "3": 720, "4": 700, "5": 730, "6": 950,
+    "7": 1300, "8": 1250, "9": 900, "10": 950, "11": 650, "12": 1050
+  },
+  "id90": {
+    "total_round_trip_estimate": 320,
+    "range": [200, 500],
+    "distance_miles": 5872,
+    "zed_mileage_band": "5001-6100",
+    "components": [
+      {"item": "法国团结税 TSBA", "eur": 40, "verified": true,
+       "note": ">5500km 经济舱，2025-03 起，2026 预算延续"},
+      {"item": "CDG 机场及民航税费", "eur": [25, 35], "verified": false},
+      {"item": "CAN 出境税费", "eur": [15, 25], "verified": false},
+      {"item": "ZED/ID90 票面价", "eur": [120, 400], "verified": false,
+       "note": "ZED 现行费率表不公开，需在 myIDTravel 或所属航司员工门户查询"}
+    ]
+  },
+  "last_minute_multiplier": 1.8
+}
