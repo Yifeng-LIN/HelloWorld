@@ -1,0 +1,42 @@
+[
+  {
+    "start": "2025-10-26",
+    "end": "2026-03-28",
+    "weekly_frequency": 7,
+    "aircraft": "359",
+    "direction": "each_way",
+    "note": "南航 CZ348/CZ347 每日一班，A350-900。CDG 11:05 起飞 -> CAN 06:05+1。冬春航季。已核实。"
+  },
+  {
+    "start": "2026-03-29",
+    "end": "2026-06-30",
+    "weekly_frequency": 7,
+    "aircraft": "359",
+    "direction": "each_way",
+    "note": "夏秋航季前段，CDG 12:10 -> CAN 05:50+1，A350-900。已核实。"
+  },
+  {
+    "start": "2026-07-01",
+    "end": "2026-08-31",
+    "weekly_frequency": 7,
+    "aircraft": "77W",
+    "direction": "each_way",
+    "note": "暑运旺季换 777-300ER（309 座，比 A350 少 5 座但高舱更多）。南航为此专门换机型，本身就是需求最强的信号。已核实。"
+  },
+  {
+    "start": "2026-09-01",
+    "end": "2026-10-24",
+    "weekly_frequency": 7,
+    "aircraft": "359",
+    "direction": "each_way",
+    "note": "暑运结束后换回 A350-900。已核实。"
+  },
+  {
+    "start": "2026-10-25",
+    "end": "2027-03-27",
+    "weekly_frequency": 7,
+    "aircraft": "359",
+    "direction": "each_way",
+    "note": "2026/27 冬春航季，CDG 11:05 -> CAN 06:05+1，A350-900。已核实。"
+  }
+]
